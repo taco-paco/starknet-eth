@@ -1,0 +1,7 @@
+node_modules/
+starknet-artifacts/
+cache/
+artifacts/
+package-lock.json
+.DS_STORE
+.env
