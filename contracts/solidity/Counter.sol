@@ -6,4 +6,10 @@ contract Counter {
     function setCounter(uint256 val) external {
         counter = val;
     }
+
+    function addAll(uint256[] calldata values) external {
+        for (uint32 i = 0; i < values.length; i++) {
+            counter += values[i];
+        }
+    }
 }

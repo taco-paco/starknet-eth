@@ -13,7 +13,7 @@ from starkware.cairo.common.cairo_keccak.keccak import (
 )
 
 @event
-func Sent(data_len: felt, data: felt*) {
+func Sent(data_len: felt, data: Uint256*) {
 }
 
 @storage_var
@@ -34,7 +34,7 @@ func getHash{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() 
 @external
 func send{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
-}(data_len: felt, data: felt*) {
+}(data_len: felt, data: Uint256*) {
     Sent.emit(data_len, data);
     _calculate_hash(data_len, data);
 
@@ -43,12 +43,12 @@ func send{
 
 func _calculate_hash{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
-}(data_len: felt, data: felt*) {
+}(data_len: felt, data: Uint256*) {
     alloc_locals;
     let (local keccak_ptr: felt*) = alloc();
     let keccak_ptr_start = keccak_ptr;
 
-    let (hash) = keccak_felts_bigend{keccak_ptr=keccak_ptr}(data_len, data);
+    let (hash) = keccak_uint256s_bigend{keccak_ptr=keccak_ptr}(data_len, data);
     finalize_keccak(keccak_ptr_start=keccak_ptr_start, keccak_ptr_end=keccak_ptr);
     s_hash.write(hash);
 
