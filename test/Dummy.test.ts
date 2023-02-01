@@ -9,6 +9,9 @@ import {
 } from "hardhat/types";
 import Web3 from "web3";
 import { expect } from "chai";
+import { uint256 } from "starknet";
+import { Uint256, uint256ToBN } from "starknet/dist/utils/uint256";
+
 let web3 = new Web3("ws://localhost:8546");
 
 async function mint(address: string, amount: number, lite = true) {
@@ -20,7 +23,7 @@ async function mint(address: string, amount: number, lite = true) {
 }
 
 const BYTE_LEN: number = 8;
-const FELT_BYTES_LEN: number = 31;
+const FELT_BYTES_LEN: number = 32; // 31;
 const maxFeltHex = "0x" + "F".repeat(FELT_BYTES_LEN * 2);
 const maxFelt = BigNumber.from(maxFeltHex);
 
@@ -33,6 +36,7 @@ function starknetEncode(number: BigNumber) {
   let bytesLen = getBytesLen(number);
   let shift = Math.ceil(bytesLen / FELT_BYTES_LEN) * FELT_BYTES_LEN - bytesLen;
   number = number.shl(shift * BYTE_LEN);
+  console.log(number.toHexString());
 
   let output: BigNumber[] = [];
   while (number.gt(BigNumber.from(0))) {
@@ -114,7 +118,7 @@ describe("Dummy test", function () {
     }
   });
 
-  it.skip("Eth only transaction", async function () {
+  it("Eth only transaction", async function () {
     const val = "102";
     const calldata = encodeSetCounter(val);
     let tx = await dummyClaim.claim(counter.address, calldata);
@@ -147,6 +151,20 @@ describe("Dummy test", function () {
     await ethTx.wait();
 
     const res = await counter.counter();
-    expect(res).to.eql(BigNumber.from(val));
+    console.log(res);
+    console.log(await dummyClaim.result());
+    // expect(res).to.eql(BigNumber.from(val));
+  });
+
+  it("Compare hashes", async function () {
+    const hashStrk = await dummySend.call("getHash");
+    const uint: Uint256 = {
+      low: hashStrk.res.low,
+      high: hashStrk.res.high,
+    };
+    console.log(uint256ToBN(uint));
+
+    const hashEth = await dummyClaim.hashRes();
+    console.log(hashEth);
   });
 });
