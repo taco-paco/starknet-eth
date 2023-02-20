@@ -2,6 +2,11 @@ import axios from "axios";
 import { ethers, starknet, network } from "hardhat";
 import { BigNumber, Contract, ContractFactory } from "ethers";
 import {
+  CairoFunction,
+  Argument,
+} from "@shardlabs/starknet-hardhat-plugin/dist/src/starknet-types";
+import { adaptOutputUtil } from "@shardlabs/starknet-hardhat-plugin/dist/src/adapt";
+import {
   Account,
   StarknetContractFactory,
   StarknetContract,
@@ -125,6 +130,28 @@ function encodeCalldata(args: string[]) {
   return "0x" + calldata;
 }
 
+// function asd(
+//   contract: StarknetContract,
+//   inputs: string[],
+//   functionName: string
+// ) {
+//   const abi = contract.getAbi();
+//   const func = <CairoFunction>abi[functionName];
+//   let asd = adaptOutputUtil(inputs.join(" "), func.inputs, abi);
+// }
+
+// From solidity to starknet
+function parseToFelts(calldata: string) {
+  calldata = calldata.slice(2, calldata.length);
+  let output: bigint[] = [];
+  for (let i = 0; i < calldata.length; i += CHUNK_SIZE * 2) {
+    const s = calldata.slice(i, i + CHUNK_SIZE * 2);
+    output.push(BigNumber.from("0x" + s).toBigInt());
+  }
+
+  return output;
+}
+
 describe("Dummy test", function () {
   let account: Account;
   let dummyGateCairo: StarknetContract;
@@ -170,7 +197,7 @@ describe("Dummy test", function () {
     const selector = hash.getSelectorFromName("setCounter");
 
     to = "0x" + padFeltToUin256(to);
-    const calldata = encodeCalldata([selector, "1", "2"]);
+    const calldata = encodeCalldata([selector, "2"]);
 
     let tx = await dummyGateSol.send(to, calldata);
     let receipt = await tx.wait();
@@ -178,10 +205,24 @@ describe("Dummy test", function () {
       return x.event == "Sent";
     })[0];
 
-    to = event.args[0];
-    calldata = event.args[1];
+    let toEv = event.args[0];
+    let calldataEv = event.args[1];
 
-    console.log(await dummyGateSol.hashRes());
+    toEv = parseToFelts(toEv)[0];
+    calldataEv = parseToFelts(calldataEv);
+
+    await account.invoke(dummyGateCairo, "claim", {
+      to: toEv,
+      data: calldataEv,
+    });
+    const hashStrk = await dummyGateCairo.call("getHash");
+    const uint: Uint256 = {
+      low: hashStrk.res.low,
+      high: hashStrk.res.high,
+    };
+    const hashStrkStr = "0x" + uint256ToBN(uint).toString(16);
+
+    expect(hashStrkStr).to.equal(await dummyGateSol.hashRes());
   });
 
   it.skip("Eth only transaction", async function () {

@@ -8,7 +8,6 @@ from starkware.starknet.common.syscalls import call_contract
 from starkware.cairo.common.cairo_keccak.keccak import (
     finalize_keccak,
     keccak_uint256s,
-    keccak_felts_bigend,
     keccak_bigend,
     keccak_uint256s_bigend,
     keccak_add_uint256s,
@@ -52,10 +51,15 @@ func send{
 func claim{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
 }(to: felt, data_len: felt, data: felt*) {
+    let result = call_contract(
+        contract_address=to,
+        function_selector=data[0],
+        calldata_size=data_len - 1,
+        calldata=data + 1,
+    );
+
     _calculate_hash_claim(to, data_len, data);
 
-    let selector = data[0];
-    call_contract(to, selector, data_len - 1, data + 1);
     return ();
 }
 
@@ -64,12 +68,15 @@ func _calculate_hash_claim{
 }(to: felt, data_len: felt, data: felt*) {
     alloc_locals;
 
-    let (local arr: felt*) = alloc();
+    let (arr: felt*) = alloc();
     assert arr[0] = to;
-    memcpy(arr + 1, data, data_len);
 
-    let (local arr_uint256: Uint256*) = alloc();
-    felts_to_uint256s(arr_uint256, arr, data_len + 1);
+    let arr_start = arr + 1;
+    memcpy(arr_start, data, data_len);
+
+    let (arr_uint256: Uint256*) = alloc();
+    let arr_uint256_start = arr_uint256;
+    felts_to_uint256s(arr_uint256_start, arr, data_len + 1);
 
     return _calculate_hash_send(data_len + 1, arr_uint256);
 }
@@ -101,5 +108,5 @@ func felts_to_uint256s{range_check_ptr}(dst: Uint256*, src: felt*, src_len: felt
     let (res: Uint256) = felt_to_uint256([src]);
     assert [dst] = res;
 
-    return felts_to_uint256s(dst + 1, src + 1, src_len - 1);
+    return felts_to_uint256s(dst + 2, src + 1, src_len - 1);
 }
