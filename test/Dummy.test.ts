@@ -192,7 +192,7 @@ describe("Dummy test", function () {
     }
   });
 
-  it.only("Senf to Starknet", async function () {
+  it.only("Send to Starknet", async function () {
     let to = counterCairo.address;
     const selector = hash.getSelectorFromName("setCounter");
 
