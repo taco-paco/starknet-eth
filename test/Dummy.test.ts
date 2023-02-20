@@ -5,7 +5,10 @@ import {
   CairoFunction,
   Argument,
 } from "@shardlabs/starknet-hardhat-plugin/dist/src/starknet-types";
-import { adaptOutputUtil } from "@shardlabs/starknet-hardhat-plugin/dist/src/adapt";
+import {
+  adaptOutputUtil,
+  adaptInputUtil,
+} from "@shardlabs/starknet-hardhat-plugin/dist/src/adapt";
 import {
   Account,
   StarknetContractFactory,
@@ -17,6 +20,7 @@ import { expect } from "chai";
 import { stark, uint256, hash } from "starknet";
 import { Uint256, uint256ToBN, bnToUint256 } from "starknet/dist/utils/uint256";
 import { removeHexPrefix } from "starknet/dist/utils/encode";
+import { getSelectorFromName } from "starknet/dist/utils/hash";
 
 let web3 = new Web3("ws://localhost:8546");
 
@@ -130,15 +134,18 @@ function encodeCalldata(args: string[]) {
   return "0x" + calldata;
 }
 
-// function asd(
-//   contract: StarknetContract,
-//   inputs: string[],
-//   functionName: string
-// ) {
-//   const abi = contract.getAbi();
-//   const func = <CairoFunction>abi[functionName];
-//   let asd = adaptOutputUtil(inputs.join(" "), func.inputs, abi);
-// }
+function generateCalldata(
+  contract: StarknetContract,
+  functionName: string,
+  input: any
+) {
+  const abi = contract.getAbi();
+  const func = <CairoFunction>abi[functionName];
+  const calldata = adaptInputUtil(functionName, input, func.inputs, abi);
+  const selector = getSelectorFromName(functionName);
+
+  return encodeCalldata([selector, ...calldata]);
+}
 
 // From solidity to starknet
 function parseToFelts(calldata: string) {
@@ -197,7 +204,10 @@ describe("Dummy test", function () {
     const selector = hash.getSelectorFromName("setCounter");
 
     to = "0x" + padFeltToUin256(to);
-    const calldata = encodeCalldata([selector, "2"]);
+    const calldata = generateCalldata(counterCairo, "setCounter", {
+      counter: 2n,
+    });
+    console.log(calldata);
 
     let tx = await dummyGateSol.send(to, calldata);
     let receipt = await tx.wait();
