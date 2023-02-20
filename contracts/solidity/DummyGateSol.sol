@@ -1,6 +1,8 @@
 pragma solidity 0.8.17;
 
-contract DummyClaim {
+contract DummyGateSol {
+    event Sent(bytes to, bytes data);
+
     bool public result = false;
     bytes32 public hashRes;
 
@@ -18,5 +20,11 @@ contract DummyClaim {
 
         result = res;
         return res;
+    }
+
+    function send(bytes memory to, bytes memory data) external {
+        _calculateHash(abi.encodePacked(to, data));
+
+        emit Sent(to, data);
     }
 }

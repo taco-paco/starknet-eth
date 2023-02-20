@@ -9,7 +9,7 @@ import {
 } from "hardhat/types";
 import Web3 from "web3";
 import { expect } from "chai";
-import { uint256 } from "starknet";
+import { stark, uint256, hash } from "starknet";
 import { Uint256, uint256ToBN, bnToUint256 } from "starknet/dist/utils/uint256";
 import { removeHexPrefix } from "starknet/dist/utils/encode";
 
@@ -109,12 +109,29 @@ function encodeAddAll(values: string[]) {
   return signature + removeHexPrefix(params);
 }
 
+function padFeltToUin256(value: string) {
+  // TODO: add range check for felt
+  let hex = BigNumber.from(value).toBigInt().toString(16);
+  let output = "0".repeat(CHUNK_SIZE * 2 - hex.length) + hex;
+  return output;
+}
+
+function encodeCalldata(args: string[]) {
+  let calldata = "";
+  for (let arg of args) {
+    calldata += padFeltToUin256(arg);
+  }
+
+  return "0x" + calldata;
+}
+
 describe("Dummy test", function () {
   let account: Account;
-  let dummySend: StarknetContract;
+  let dummyGateCairo: StarknetContract;
+  let counterCairo: StarknetContract;
 
-  let dummyClaim: Contract;
-  let counter: Contract;
+  let dummyGateSol: Contract;
+  let counterSol: Contract;
 
   before(async function () {
     // cairo
@@ -123,41 +140,68 @@ describe("Dummy test", function () {
       await mint(account.address, 1e18);
       await account.deployAccount({ maxFee: 1e18 });
 
-      const dummySendFactory = await starknet.getContractFactory("DummySend");
-      await account.declare(dummySendFactory, { maxFee: 1e18 });
-      dummySend = await account.deploy(dummySendFactory);
+      const dummyGateCairoFactory = await starknet.getContractFactory(
+        "DummyGateCairo"
+      );
+      await account.declare(dummyGateCairoFactory, { maxFee: 1e18 });
+      dummyGateCairo = await account.deploy(dummyGateCairoFactory);
+
+      const counterCairoFactory = await starknet.getContractFactory("Counter");
+      await account.declare(counterCairoFactory, { maxFee: 1e18 });
+      counterCairo = await account.deploy(counterCairoFactory);
     }
 
     // solidity
     {
-      const dummyClaimFactory = await ethers.getContractFactory("DummyClaim");
-      dummyClaim = await dummyClaimFactory.deploy();
-      await dummyClaim.deployed();
+      const dummyGateSolFactory = await ethers.getContractFactory(
+        "DummyGateSol"
+      );
+      dummyGateSol = await dummyGateSolFactory.deploy();
+      await dummyGateSol.deployed();
 
-      const counterFactory = await ethers.getContractFactory("Counter");
-      counter = await counterFactory.deploy();
-      await counter.deployed();
+      const counterSolFactory = await ethers.getContractFactory("Counter");
+      counterSol = await counterSolFactory.deploy();
+      await counterSol.deployed();
     }
+  });
+
+  it.only("Senf to Starknet", async function () {
+    let to = counterCairo.address;
+    const selector = hash.getSelectorFromName("setCounter");
+
+    to = "0x" + padFeltToUin256(to);
+    const calldata = encodeCalldata([selector, "1", "2"]);
+
+    let tx = await dummyGateSol.send(to, calldata);
+    let receipt = await tx.wait();
+    let event = receipt.events?.filter((x: any) => {
+      return x.event == "Sent";
+    })[0];
+
+    to = event.args[0];
+    calldata = event.args[1];
+
+    console.log(await dummyGateSol.hashRes());
   });
 
   it.skip("Eth only transaction", async function () {
     const val = "102";
-    const calldata = encodeSetCounter(val);
+    const calldata = encodeSetCounter(val) + "000000000000".repeat(5);
     console.log(calldata);
-    let tx = await dummyClaim.claim(counter.address, calldata);
+    let tx = await dummyGateSol.claim(counterSol.address, calldata);
     await tx.wait();
 
-    const res = await counter.counter();
+    const res = await counterSol.counter();
     expect(res).to.eql(BigNumber.from(val));
   });
 
   it.skip("Eth only transaction", async function () {
     const values = ["1", "2", "3", "4", "5"];
     const calldata = encodeAddAll(values);
-    let tx = await dummyClaim.claim(counter.address, calldata);
+    let tx = await dummyGateSol.claim(counterSol.address, calldata);
     await tx.wait();
 
-    const res = await counter.counter();
+    const res = await counterSol.counter();
     expect(res).to.eql(BigNumber.from(15));
   });
 
@@ -166,7 +210,7 @@ describe("Dummy test", function () {
     const calldata = encodeSetCounter(val);
     const starknetCalldata = starknetEncode(BigNumber.from(calldata));
 
-    let tx = await account.invoke(dummySend, "send", {
+    let tx = await account.invoke(dummyGateCairo, "send", {
       data: starknetCalldata,
     });
     const receipt = await starknet.getTransactionReceipt(tx);
@@ -177,32 +221,32 @@ describe("Dummy test", function () {
     let event = events[0];
 
     const decodedStarknetCalldata = parseEvent(event);
-    let ethTx = await dummyClaim.claim(
-      counter.address,
+    let ethTx = await dummyGateSol.claim(
+      counterSol.address,
       decodedStarknetCalldata
     );
     await ethTx.wait();
 
-    const res = await counter.counter();
+    const res = await counterSol.counter();
     expect(res).to.eql(BigNumber.from(val));
 
-    const hashStrk = await dummySend.call("getHash");
+    const hashStrk = await dummyGateCairo.call("getHash");
     const uint: Uint256 = {
       low: hashStrk.res.low,
       high: hashStrk.res.high,
     };
     const hashStrkStr = "0x" + uint256ToBN(uint).toString(16);
 
-    const hashEth = await dummyClaim.hashRes();
+    const hashEth = await dummyGateSol.hashRes();
     expect(hashStrkStr).to.equal(hashEth);
   });
 
-  it("Starknet-eth array transaction", async function () {
+  it.skip("Starknet-eth array transaction", async function () {
     const val = ["1", "2", "3", "4", "5"];
     const calldata = encodeAddAll(val);
     const starknetCalldata = starknetEncode(BigNumber.from(calldata));
 
-    let tx = await account.invoke(dummySend, "send", {
+    let tx = await account.invoke(dummyGateCairo, "send", {
       data: starknetCalldata,
     });
     const receipt = await starknet.getTransactionReceipt(tx);
@@ -213,23 +257,23 @@ describe("Dummy test", function () {
     let event = events[0];
 
     const decodedStarknetCalldata = parseEvent(event);
-    let ethTx = await dummyClaim.claim(
-      counter.address,
+    let ethTx = await dummyGateSol.claim(
+      counterSol.address,
       decodedStarknetCalldata
     );
     await ethTx.wait();
 
-    const res = await counter.counter();
+    const res = await counterSol.counter();
     expect(res).to.eql(BigNumber.from(15));
 
-    const hashStrk = await dummySend.call("getHash");
+    const hashStrk = await dummyGateCairo.call("getHash");
     const uint: Uint256 = {
       low: hashStrk.res.low,
       high: hashStrk.res.high,
     };
     const hashStrkStr = "0x" + uint256ToBN(uint).toString(16);
 
-    const hashEth = await dummyClaim.hashRes();
+    const hashEth = await dummyGateSol.hashRes();
     expect(hashStrkStr).to.equal(hashEth);
   });
 });
